@@ -13,7 +13,6 @@ const TYPES = {
   kikazaru: { emoji: '🙉', name: '聞か猿', blocked: 'audio', desc: '音が聞こえず、コメントに音声を投稿できません' },
 };
 const typeOf = (u) => TYPES[u.type];
-const canSee = (kind) => me && typeOf(me).blocked !== kind;
 
 async function api(method, url, body) {
   const res = await fetch(url, {
@@ -178,15 +177,16 @@ function composer({ replyTo = null, placeholder = 'いまどうしてる？', on
     btn.disabled = (len === 0 && !image && !audio) || len > MAX_LEN || !!recorder;
   };
 
+  // 自分が添付したものなので、タイプに関係なくプレビューする
   const renderPreviews = () => {
     const chip = (label, body, onRemove) => h('div', { class: 'preview' },
       body, h('button', { type: 'button', class: 'link', onclick: onRemove }, `${label}を外す`));
     previews.replaceChildren(
       image && chip('画像',
-        canSee('image') ? h('img', { src: image.dataUrl, alt: '' }) : hiddenBox('image'),
+        h('img', { src: image.dataUrl, alt: '' }),
         () => { image = null; renderPreviews(); }),
       audio && chip('音声',
-        canSee('audio') ? h('audio', { src: audio.dataUrl, controls: true }) : hiddenBox('audio'),
+        h('audio', { src: audio.dataUrl, controls: true }),
         () => { audio = null; renderPreviews(); }),
     );
     update();

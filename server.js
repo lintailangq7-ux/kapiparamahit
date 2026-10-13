@@ -270,13 +270,14 @@ function saveMedia(dataUrl, allowed, maxBytes, label) {
   return { file, mime };
 }
 
-// u は USER_SELECT で取った行
+// u は USER_SELECT で取った行。自分の自己紹介はタイプに関係なく見える
 function publicUser(u, viewer) {
+  const seeBio = viewer.id === u.id || canSee(viewer, 'text');
   return {
     username: u.username,
     displayName: u.display_name,
-    bio: canSee(viewer, 'text') ? u.bio : null,
-    bioHidden: !canSee(viewer, 'text') && !!u.bio,
+    bio: seeBio ? u.bio : null,
+    bioHidden: !seeBio && !!u.bio,
     type: u.type,
     createdAt: u.created_at,
     followingCount: u.following_count,
@@ -288,12 +289,14 @@ function publicUser(u, viewer) {
 }
 
 // 見る人のタイプに応じて、見えない内容はサーバーから送らない (p は POST_SELECT で取った行)
+// 自分の投稿はタイプに関係なく全部見える
 function publicPost(p, viewer) {
-  const media = (kind, file) => (!file ? null : canSee(viewer, kind) ? { url: `/media/${file}` } : { hidden: true });
+  const see = (kind) => viewer.id === p.user_id || canSee(viewer, kind);
+  const media = (kind, file) => (!file ? null : see(kind) ? { url: `/media/${file}` } : { hidden: true });
   return {
     id: p.id,
-    text: p.text && canSee(viewer, 'text') ? p.text : null,
-    textHidden: !!p.text && !canSee(viewer, 'text'),
+    text: p.text && see('text') ? p.text : null,
+    textHidden: !!p.text && !see('text'),
     image: media('image', p.image_file),
     audio: media('audio', p.audio_file),
     createdAt: p.created_at,
@@ -485,18 +488,18 @@ route('GET', '/api/users', async (req) => {
 });
 
 // ---------- アップロードされた画像・音声 ----------
-// 見る権限がないタイプのアカウントにはファイル自体を渡さない
+// 見る権限がないタイプのアカウントにはファイル自体を渡さない (自分の投稿は除く)
 async function serveMedia(req, res, name) {
   const viewer = await currentUser(req);
   const [[p]] = await pool.query(
-    'SELECT image_file, image_mime, audio_file, audio_mime FROM posts WHERE image_file = ? OR audio_file = ? LIMIT 1',
+    'SELECT user_id, image_file, image_mime, audio_file, audio_mime FROM posts WHERE image_file = ? OR audio_file = ? LIMIT 1',
     [name, name]
   );
   let kind = null;
   let mime = null;
   if (p && p.image_file === name) [kind, mime] = ['image', p.image_mime];
   else if (p) [kind, mime] = ['audio', p.audio_mime];
-  if (!viewer || !kind || !canSee(viewer, kind)) {
+  if (!viewer || !kind || (viewer.id !== p.user_id && !canSee(viewer, kind))) {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     return res.end('Not found');
   }
